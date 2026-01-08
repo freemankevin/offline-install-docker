@@ -221,8 +221,8 @@ class DockerUpdater:
         """下载文件并显示进度，支持重试"""
         filepath = self.output_dir / filename
         
-        # 对于compose文件，即使存在也重新下载（因为版本可能更新）
-        if "docker-compose" not in filename and filepath.exists():
+        # 检查文件是否已存在（对所有文件类型都进行检查）
+        if filepath.exists():
             self.log(f"文件已存在，跳过下载: {filename}", "WARNING")
             self.download_stats['skipped'] += 1
             return True
@@ -302,30 +302,43 @@ class DockerUpdater:
     def cleanup_old_versions(self, current_docker_version, current_compose_version, arch):
         """清理指定架构的旧版本文件"""
         try:
+            import re
+            
             # 清理docker旧版本（只清理非当前版本的文件）
             docker_pattern = f"docker-*-{arch}.tgz"
             docker_files = list(self.output_dir.glob(docker_pattern))
             for file in docker_files:
-                # 只删除版本号不同的文件
-                if not file.name.startswith(f"docker-{current_docker_version}-"):
-                    file.unlink()
-                    self.log(f"已删除旧版本: {file.name}")
+                # 提取文件中的版本号: docker-VERSION-ARCH.tgz
+                match = re.match(r'docker-(\d+\.\d+\.\d+)-.+\.tgz', file.name)
+                if match:
+                    file_version = match.group(1)
+                    if file_version != current_docker_version:
+                        file.unlink()
+                        self.log(f"已删除旧版本: {file.name}")
             
             # 清理docker-rootless-extras旧版本
             rootless_pattern = f"docker-rootless-extras-*-{arch}.tgz"
             rootless_files = list(self.output_dir.glob(rootless_pattern))
             for file in rootless_files:
-                if not file.name.startswith(f"docker-rootless-extras-{current_docker_version}-"):
-                    file.unlink()
-                    self.log(f"已删除旧版本: {file.name}")
+                # 提取文件中的版本号: docker-rootless-extras-VERSION-ARCH.tgz
+                match = re.match(r'docker-rootless-extras-(\d+\.\d+\.\d+)-.+\.tgz', file.name)
+                if match:
+                    file_version = match.group(1)
+                    if file_version != current_docker_version:
+                        file.unlink()
+                        self.log(f"已删除旧版本: {file.name}")
             
             # 清理docker-compose旧版本
             compose_pattern = f"docker-compose-linux-*-{arch}"
             compose_files = list(self.output_dir.glob(compose_pattern))
             for file in compose_files:
-                if not file.name.startswith(f"docker-compose-linux-{current_compose_version}-"):
-                    file.unlink()
-                    self.log(f"已删除旧版本: {file.name}")
+                # 提取文件中的版本号: docker-compose-linux-VERSION-ARCH
+                match = re.match(r'docker-compose-linux-(\d+\.\d+\.\d+)-.+', file.name)
+                if match:
+                    file_version = match.group(1)
+                    if file_version != current_compose_version:
+                        file.unlink()
+                        self.log(f"已删除旧版本: {file.name}")
                     
         except Exception as e:
             self.log(f"清理旧文件时出错: {e}", "ERROR")

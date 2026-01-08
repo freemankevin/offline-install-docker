@@ -1,7 +1,6 @@
 # offline-install-docker
 
-[![更新状态](https://github.com/freemankevin/offline-install-docker/actions/workflows/update-docker.yml/badge.svg)](https://github.com/freemankevin/offline-install-docker/actions/workflows/update-docker.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![更新状态](https://github.com/freemankevin/offline-install-docker/actions/workflows/update.yml/badge.svg)](https://github.com/freemankevin/offline-install-docker/actions/workflows/update.yml)
 
 🚀 自动化维护的 Docker 离线安装包，支持 x86_64 和 ARM64 架构。
 
@@ -62,7 +61,7 @@ offline-install-docker/
 
 2. **安装 Docker**
    ```bash
-   sudo ./scripts/install.sh
+   bash ./packages/scripts/install.sh
    ```
 
 3. **验证安装**
