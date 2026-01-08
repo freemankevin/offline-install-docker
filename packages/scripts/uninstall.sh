@@ -181,7 +181,11 @@ remove_docker_data() {
     # Check for Docker directories in common locations
     for location in /var/lib /data; do
         if [[ -d "$location" ]]; then
-            find "$location" -maxdepth 1 -type d -name "docker" -exec rm -rf {} + 2>/dev/null || true
+            local docker_dir="${location}/docker"
+            if [[ -d "$docker_dir" ]]; then
+                rm -rf "$docker_dir" &>/dev/null || true
+                print_info "Removed: $docker_dir"
+            fi
         fi
     done
     

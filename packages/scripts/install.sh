@@ -112,6 +112,29 @@ find_latest_file() {
     echo "$latest_file"
 }
 
+find_latest_docker_file() {
+    local pattern="$1"
+    local latest_file=""
+    local latest_version="0.0.0"
+    
+    for file in $pattern; do
+        [[ ! -f "$file" ]] && continue
+        
+        local filename=$(basename "$file")
+        
+        # Skip docker-rootless-extras files
+        [[ "$filename" =~ docker-rootless-extras ]] && continue
+        
+        local version=$(extract_version "$filename")
+        if [[ $(printf '%s\n' "$version" "$latest_version" | sort -V | tail -n1) == "$version" ]]; then
+            latest_version="$version"
+            latest_file="$file"
+        fi
+    done
+    
+    echo "$latest_file"
+}
+
 # ============================================================================
 # Podman Cleanup (Optional)
 # ============================================================================
@@ -152,7 +175,7 @@ install_docker_binaries() {
     
     print_info "Searching for Docker binaries (${arch})..."
     
-    local docker_file=$(find_latest_file "$base_dir/docker-*-${arch}.tgz")
+    local docker_file=$(find_latest_docker_file "$base_dir/docker-*-${arch}.tgz")
     [[ -z "$docker_file" ]] && error_exit "No Docker binary found for ${arch} in ${base_dir}"
     
     print_info "Installing Docker from $(basename "$docker_file")..."
