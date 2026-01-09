@@ -26,5 +26,3 @@ Thumbs.db
 
 # 保留这些文件
 !packages/README.md
-!packages/VERSION.json
-!packages/SHA256SUMS

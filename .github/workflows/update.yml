@@ -17,37 +17,57 @@ on:
       - 'packages/services/**'
       - '.github/workflows/update.yml'
 
+env:
+  GITHUB_CONTEXT: ${{ toJson(github) }}
+
 jobs:
   update:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # 明确声明权限
+      contents: write
+      actions: read
+    
+    outputs:
+      need_update: ${{ steps.check.outputs.need_update }}
+      docker_version: ${{ steps.version.outputs.docker }}
+      compose_version: ${{ steps.version.outputs.compose }}
+      release_name: ${{ steps.package.outputs.name }}
+      release_file: ${{ steps.package.outputs.file }}
+    
     steps:
-      - uses: actions/checkout@v4
+      - name: '📥 检出代码'
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 获取完整历史，便于版本比较
+          fetch-depth: 0
       
-      - uses: actions/setup-python@v5
+      - name: '🐍 设置 Python 环境'
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       
-      - name: 检查更新
+      - name: '🔍 版本检查'
         id: check
         run: |
-          # 检查 VERSION.json 是否存在
+          echo "::group::📊 版本对比"
+          
+          # 检查本地版本
           if [ -f "packages/VERSION.json" ]; then
             CURRENT=$(python3 -c "import json; print(json.load(open('packages/VERSION.json'))['docker_version'])" 2>/dev/null || echo "none")
+            echo "✓ 找到本地 VERSION.json"
           else
             CURRENT="none"
-            echo "⚠️ VERSION.json 不存在，这可能是首次运行"
+            echo "⚠️  WARNING: VERSION.json 不存在，这可能是首次运行"
           fi
           
-          # 获取最新版本，增加错误处理
-          LATEST=$(curl -s --fail https://api.github.com/repos/moby/moby/releases/latest | \
-                   python3 -c "import sys,json,re; data=json.load(sys.stdin); print(re.search(r'\d+\.\d+\.\d+', data['tag_name']).group())" 2>/dev/null || echo "error")
+          # 获取最新版本
+          echo "正在获取最新版本..."
+          LATEST=$(curl -s --fail \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/moby/moby/releases/latest | \
+            python3 -c "import sys,json,re; data=json.load(sys.stdin); print(re.search(r'\d+\.\d+\.\d+', data['tag_name']).group())" 2>/dev/null || echo "error")
           
           if [ "$LATEST" = "error" ]; then
-            echo "❌ 获取最新版本失败，可能是网络问题或 API 限制"
+            echo "::error::❌ 获取最新版本失败，可能是网络问题或 API 限制"
             exit 1
           fi
           
@@ -60,112 +80,238 @@ jobs:
           # 判断是否需要更新
           if [ "$CURRENT" != "$LATEST" ]; then
             echo "need_update=true" >> $GITHUB_OUTPUT
-            echo "✅ 需要更新到 $LATEST"
+            echo "::notice::✓ 需要更新到 $LATEST"
           else
             echo "need_update=false" >> $GITHUB_OUTPUT
-            echo "✅ 已是最新版本"
+            echo "✓ 已是最新版本"
           fi
+          
+          echo "::endgroup::"
       
-      - name: 下载更新
+      - name: '📥 下载更新包'
         if: steps.check.outputs.need_update == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
         run: |
-          ARCH=${{ github.event.inputs.architectures || 'all' }}
-          echo "开始下载架构: $ARCH"
+          echo "::group::⬇️ 下载 Docker 离线包"
+          
+          ARCH="${{ github.event.inputs.architectures || 'all' }}"
+          echo "架构选择: $ARCH"
+          echo ""
+          
           python3 packages/scripts/update.py -o packages -a $ARCH --ci
+          
+          echo ""
+          echo "::endgroup::"
       
-      - name: 读取版本
+      - name: '📖 读取版本信息'
         if: steps.check.outputs.need_update == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
         id: version
         run: |
+          echo "::group::📋 版本信息"
+          
           if [ ! -f "packages/VERSION.json" ]; then
-            echo "❌ VERSION.json 不存在，下载可能失败"
+            echo "::error::❌ VERSION.json 不存在，下载可能失败"
             exit 1
           fi
           
           DOCKER_VER=$(python3 -c "import json; print(json.load(open('packages/VERSION.json'))['docker_version'])")
           COMPOSE_VER=$(python3 -c "import json; print(json.load(open('packages/VERSION.json'))['compose_version'])")
           
+          echo "Docker 版本: $DOCKER_VER"
+          echo "Compose 版本: $COMPOSE_VER"
+          
           echo "docker=$DOCKER_VER" >> $GITHUB_OUTPUT
           echo "compose=$COMPOSE_VER" >> $GITHUB_OUTPUT
-          echo "Docker: $DOCKER_VER, Compose: $COMPOSE_VER"
+          
+          echo "::endgroup::"
       
-      - name: 打包
+      - name: '📊 统计文件信息'
+        if: steps.check.outputs.need_update == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+        run: |
+          echo "::group::📦 包文件统计"
+          
+          cd packages
+          
+          echo "Docker 二进制包:"
+          ls -lh docker-*.tgz 2>/dev/null | awk '{print "  • " $9 " (" $5 ")"}'
+          
+          echo ""
+          echo "Docker Compose:"
+          ls -lh docker-compose-linux-* 2>/dev/null | grep -v '.tgz' | awk '{print "  • " $9 " (" $5 ")"}'
+          
+          echo ""
+          echo "Rootless Extras:"
+          ls -lh docker-rootless-extras-*.tgz 2>/dev/null | awk '{print "  • " $9 " (" $5 ")"}'
+          
+          echo ""
+          echo "校验信息:"
+          if [ -f "SHA256SUMS" ]; then
+            echo "  ✓ SHA256SUMS 已生成"
+            wc -l < SHA256SUMS | awk '{print "  • 包含 " $1 " 个文件"}'
+          fi
+          
+          if [ -f "VERSION.json" ]; then
+            echo "  ✓ VERSION.json 已生成"
+          fi
+          
+          echo "::endgroup::"
+      
+      - name: '🎁 打包发布版本'
         if: steps.check.outputs.need_update == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
         id: package
         run: |
-          NAME="docker-offline-v${{ steps.version.outputs.docker }}"
-          echo "创建发布包: $NAME"
+          echo "::group::📦 打包发布版本"
           
+          DOCKER_VER="${{ steps.version.outputs.docker }}"
+          NAME="docker-offline-v${DOCKER_VER}"
+          
+          echo "发布包名称: $NAME"
+          echo ""
+          
+          # 创建发布目录结构
           mkdir -p "release/$NAME/packages"
+          echo "✓ 创建目录结构"
           
-          cp -r packages/* "release/$NAME/packages/"
-          cp README.md "release/$NAME/"
+          # 复制文件
+          cp -r packages/* "release/$NAME/packages/" 2>/dev/null && echo "✓ 复制 Docker 包文件"
+          cp README.md "release/$NAME/" 2>/dev/null && echo "✓ 复制 README"
           
+          # 打包
           cd release
-          tar -czf "$NAME.tar.gz" "$NAME"
-          sha256sum "$NAME.tar.gz" > "$NAME.tar.gz.sha256"
+          echo ""
+          echo "正在压缩..."
+          tar -czf "$NAME.tar.gz" "$NAME" && echo "✓ 创建 TAR.GZ 包"
+          
+          # 计算校验和
+          sha256sum "$NAME.tar.gz" > "$NAME.tar.gz.sha256" && echo "✓ 生成 SHA256 校验和"
+          
+          # 统计大小
+          SIZE=$(du -h "$NAME.tar.gz" | awk '{print $1}')
+          echo ""
+          echo "发布包大小: $SIZE"
           
           echo "name=$NAME" >> $GITHUB_OUTPUT
           echo "file=$NAME.tar.gz" >> $GITHUB_OUTPUT
-          echo "✅ 打包完成"
+          
+          echo "::endgroup::"
       
-      - name: 提交代码
+      - name: '💾 提交代码变更'
         if: steps.check.outputs.need_update == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
         run: |
+          echo "::group::📝 Git 操作"
+          
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          
           git add packages/
           
           if git diff --staged --quiet; then
-            echo "没有变更需要提交"
+            echo "⚠️  WARNING: 没有变更需要提交"
           else
-            git commit -m "chore: update to Docker v${{ steps.version.outputs.docker }}"
+            DOCKER_VER="${{ steps.version.outputs.docker }}"
+            git commit -m "chore: update Docker offline packages to v${DOCKER_VER}"
             git push
-            echo "✅ 代码已提交"
+            echo "✓ 代码变更已提交并推送"
           fi
+          
+          echo ""
+          echo "正在创建 Git Tag..."
           
           # 创建 tag
           TAG="v${{ steps.version.outputs.docker }}"
           if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG 已存在，跳过创建"
+            echo "⚠️  WARNING: Tag $TAG 已存在，跳过创建"
           else
-            git tag -a "$TAG" -m "Docker v${{ steps.version.outputs.docker }}"
+            git tag -a "$TAG" -m "Docker v${{ steps.version.outputs.docker }} - Offline Installation Package"
             git push origin "$TAG"
-            echo "✅ Tag $TAG 已创建"
+            echo "✓ Tag $TAG 已创建并推送"
           fi
+          
+          echo "::endgroup::"
       
-      - name: 创建 Release
+      - name: '🚀 发布 Release'
         if: steps.check.outputs.need_update == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.docker }}
-          name: Docker v${{ steps.version.outputs.docker }}
+          name: 'Docker Offline Package v${{ steps.version.outputs.docker }}'
+          draft: false
+          prerelease: false
           body: |
-            **Docker**: `${{ steps.version.outputs.docker }}`
-            **Compose**: `${{ steps.version.outputs.compose }}`
+            # 🐳 Docker 离线安装包
             
-            ## 📥 安装说明
+            **Docker Engine**: `${{ steps.version.outputs.docker }}`  
+            **Docker Compose**: `${{ steps.version.outputs.compose }}`
+            
+            ## 📋 支持架构
+            
+            - ✓ x86_64 (AMD64)
+            - ✓ aarch64 (ARM64)
+            
+            ## 📥 快速开始
+            
+            ### 1️⃣ 下载
             
             ```bash
-            # 下载离线包
             wget https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.docker }}/${{ steps.package.outputs.file }}
+            ```
             
-            # 验证校验和（可选）
+            ### 2️⃣ 验证 (可选)
+            
+            ```bash
             wget https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.docker }}/${{ steps.package.outputs.file }}.sha256
             sha256sum -c ${{ steps.package.outputs.file }}.sha256
+            ```
             
-            # 解压并安装
+            ### 3️⃣ 安装
+            
+            ```bash
             tar -xzf ${{ steps.package.outputs.file }}
             cd ${{ steps.package.outputs.name }}
             sudo bash packages/scripts/install.sh
             ```
             
+            ## 🗑️ 卸载
+            
+            ```bash
+            cd ${{ steps.package.outputs.name }}
+            sudo bash packages/scripts/uninstall.sh
+            ```
+            
             ## 📦 包含内容
-            - Docker Engine v${{ steps.version.outputs.docker }}
-            - Docker Compose v${{ steps.version.outputs.compose }}
-            - 支持架构: x86_64, aarch64
+            
+            - ✅ Docker Engine v${{ steps.version.outputs.docker }}
+            - ✅ Docker Compose v${{ steps.version.outputs.compose }}
+            - ✅ containerd 和 runc
+            - ✅ 完整的安装和卸载脚本
+            - ✅ systemd 服务配置
+            
+            ## 🔐 安全验证
+            
+            所有发布包都包含 SHA256 校验和，建议验证完整性后再使用。
+            
+            ---
+            
+            **发布时间**: ${{ github.event.head_commit.timestamp }}  
+            **触发事件**: ${{ github.event_name }}
           files: |
             release/${{ steps.package.outputs.file }}
             release/${{ steps.package.outputs.file }}.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: '✅ 工作流完成'
+        if: always()
+        run: |
+          echo "::group::📊 工作流总结"
+          
+          if [ "${{ steps.check.outputs.need_update }}" = "true" ]; then
+            echo "✓ 成功更新到 Docker v${{ steps.version.outputs.docker }}"
+            echo "✓ 发布包: ${{ steps.package.outputs.file }}"
+          else
+            echo "ℹ️  无需更新（已是最新版本）"
+          fi
+          
+          echo ""
+          echo "工作流状态: ${{ job.status }}"
+          
+          echo "::endgroup::"
