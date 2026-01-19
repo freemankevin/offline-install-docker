@@ -1,7 +1,7 @@
 {
-  "docker_version": "29.1.4",
+  "docker_version": "29.1.5",
   "compose_version": "5.0.1",
-  "update_date": "2026-01-12 03:47:24",
+  "update_date": "2026-01-19 03:48:21",
   "architectures": [
     "x86_64",
     "aarch64"
@@ -10,6 +10,6 @@
     "success": 6,
     "failed": 0,
     "skipped": 0,
-    "total_size": 252196232
+    "total_size": 252137585
   }
 }
