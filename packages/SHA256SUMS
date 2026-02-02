@@ -1,4 +1,4 @@
-c07ed6ce22375c4ba24cca554dc99cbc31ab2da24d893a5f2d4bd1854e8eaadd  docker-29.1.5-aarch64.tgz
-882bb03f3fd36ad565b1362f5bbb5d5af5f2410a5c10cae3f9d3d54e2540adc2  docker-29.1.5-x86_64.tgz
-6dbb9c6146bdb34781250f31ad4cbb13b4dfeb3f3f557917d0e90418f58e0700  docker-rootless-extras-29.1.5-aarch64.tgz
-e1914640fb749558f88019cac57ecb83e68e3dcba4fedfd99e5904f1fa27fba6  docker-rootless-extras-29.1.5-x86_64.tgz
+e1590e656abaf2dfe8a1d724d99b82644446fe24844f438ea000e08006774717  docker-29.2.0-aarch64.tgz
+1beacd5cebec16bf857d557d3ce3e7e20fc692639cd36e0cfb3877def06b1e7c  docker-29.2.0-x86_64.tgz
+ca6034fbc0659e11edba6f4e18aa9524f157e7abdfb730f34f4a1fd6d818f555  docker-rootless-extras-29.2.0-aarch64.tgz
+0bc933b7a4201f5cf1918a61b24410c6f769bed8077200bbd3e578fe18c40827  docker-rootless-extras-29.2.0-x86_64.tgz
